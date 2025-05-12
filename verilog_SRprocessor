@@ -1,0 +1,72 @@
+module SimpleRISC (
+    input clk,
+    input reset
+);
+
+    reg [31:0] PC;
+    wire [31:0] instr;
+    wire [3:0] opcode, rd, rn, rm;
+    wire [15:0] imm16;
+    wire [31:0] alu_result, rd_data, rn_data, rm_data, mem_data;
+    wire mem_read, mem_write;
+
+    // Instruction Memory (256 x 32-bit words)
+    reg [31:0] instr_mem [0:255];
+
+    // Data Memory (256 x 32-bit words)
+    reg [31:0] data_mem [0:255];
+
+    // Register File
+    reg [31:0] reg_file [0:15];
+
+    // Fetch
+    assign instr = instr_mem[PC[9:2]];
+
+    // Decode
+    assign opcode = instr[31:28];
+    assign rd     = instr[27:24];
+    assign rn     = instr[23:20];
+    assign rm     = instr[19:16];
+    assign imm16  = instr[15:0];
+
+    assign rn_data = reg_file[rn];
+    assign rm_data = reg_file[rm];
+
+    // Execute
+    always @(*) begin
+        case (opcode)
+            4'b0000: alu_result = rn_data + rm_data; // ADD
+            4'b0001: alu_result = rn_data - rm_data; // SUB
+            4'b0010: alu_result = imm16;             // MOV
+            4'b0011: alu_result = rn_data + imm16;   // LOAD addr
+            4'b0100: alu_result = rn_data + imm16;   // STORE addr
+            4'b0101: alu_result = PC + {{16{imm16[15]}}, imm16}; // Branch
+            default: alu_result = 32'b0;
+        endcase
+    end
+
+    // Memory Read
+    assign mem_data = data_mem[alu_result[9:2]];
+
+    // Write Back & Memory
+    always @(posedge clk or posedge reset) begin
+        if (reset) begin
+            PC <= 0;
+        end else begin
+            case (opcode)
+                4'b0000, 4'b0001: reg_file[rd] <= alu_result;      // ADD/SUB
+                4'b0010:         reg_file[rd] <= alu_result;      // MOV
+                4'b0011:         reg_file[rd] <= mem_data;        // LOAD
+                4'b0100:         data_mem[alu_result[9:2]] <= rm_data; // STORE
+                4'b0101:         PC <= alu_result;                // Branch
+                default:         PC <= PC + 4;
+            endcase
+
+            if (opcode != 4'b0101)
+                PC <= PC + 4;
+        end
+    end
+
+endmodule
+
+
